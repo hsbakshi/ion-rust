@@ -14,8 +14,9 @@ use criterion::{criterion_group, criterion_main, Criterion};
 ///   `v1_0::Binary` respectively, reading all values in a single document (requires the
 ///   `experimental-reader-writer` feature, like the other benchmarks in this suite).
 /// * `multi_ivm`: many small documents concatenated into one stream (each preceded by an IVM),
-///   read through a *single* reader. This exercises the encoding-context reset that runs at
-///   every IVM boundary.
+///   read through a *single* reader. This exercises the encoding-context reset and local symbol
+///   table processing that run at every IVM boundary, with reader construction amortized across
+///   the documents in the stream.
 ///
 /// Documents are structs with a mixed scalar field profile (strings, ints, bools, a timestamp)
 /// whose field names require a local symbol table. Three sizes (~200 B, ~2 KB, ~20 KB) show how
@@ -177,8 +178,9 @@ mod lazy_benchmark {
 
     /// Benchmarks reading many small documents concatenated into a single stream — each document
     /// preceded by its own IVM — through a single reader. The encoding context (symbol table and
-    /// macro table) is reset at every IVM boundary, so this measures the per-document reset cost
-    /// in isolation from reader construction.
+    /// macro table) is reset at every IVM boundary. Reader construction happens once per
+    /// iteration (amortized across `NUM_DOCS` documents), so the measurement is dominated by the
+    /// per-document reset and local symbol table processing.
     fn multi_ivm(c: &mut Criterion) {
         const NUM_DOCS: usize = 100;
         let mut group = c.benchmark_group("small_doc_read/multi_ivm");
