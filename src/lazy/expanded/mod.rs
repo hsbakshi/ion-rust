@@ -472,7 +472,7 @@ impl<Encoding: Decoder, Input: IonInput> ExpandingReader<Encoding, Input> {
             } else {
                 symbol_table.reset_to_version(new_version);
             }
-            macro_table.reset_to_system_macros();
+            macro_table.reset_to_system_macros(new_version);
             pending_changes.has_changes = false;
             pending_changes.is_lst_append = false;
             // If we're switching to a new version, the last stream item was a version marker
