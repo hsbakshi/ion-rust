@@ -112,8 +112,6 @@ impl SymbolTable {
 
     /// Adds **all** of the system symbols to the table, not just the permanent prefix symbols.
     pub(crate) fn initialize_with_all_system_symbols(&mut self) {
-        // TODO: Make thread local system symbol tables that are materialized (i.e. using Arc<str>)
-        //       so we can avoid doing new heap allocations each time
         self.add_placeholder(); // $0
 
         let system_symbols = match self.ion_version {
@@ -121,8 +119,10 @@ impl SymbolTable {
             IonVersion::v1_1 => v1_1::SYSTEM_SYMBOLS,
         };
 
+        // The system symbol texts are `&'static str`s, so the symbols can refer to them
+        // directly instead of heap-allocating a copy of each one.
         system_symbols.iter().copied().for_each(|text| {
-            let _sid = self.add_symbol_for_text(text);
+            let _sid = self.add_symbol(Symbol::static_text(text));
         });
     }
 
@@ -277,5 +277,27 @@ impl Debug for SymbolTable {
             write!(f, "{}: {:?}, ", address, symbol.text())?;
         }
         write!(f, "}}")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The system symbols are stored as `Symbol`s with static text; confirm that they can
+    /// still be resolved in both directions (text -> SID and SID -> text) like any other symbol.
+    #[test]
+    fn system_symbols_resolve_by_text_and_sid() {
+        let mut table = SymbolTable::new(IonVersion::v1_0);
+        assert_eq!(table.len(), 10);
+        for (index, &text) in v1_0::SYSTEM_SYMBOLS.iter().enumerate() {
+            let sid = index + 1; // SID 0 is the unknown-text placeholder `$0`
+            assert_eq!(table.sid_for(text), Some(sid));
+            assert_eq!(table.text_for(sid), Some(text));
+        }
+        // Symbols with heap-allocated text can coexist with the static system symbols.
+        let sid = table.add_symbol_for_text("hello");
+        assert_eq!(table.sid_for("hello"), Some(sid));
+        assert_eq!(table.text_for(sid), Some("hello"));
     }
 }
