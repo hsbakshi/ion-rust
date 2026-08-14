@@ -4,9 +4,10 @@ use crate::ion_data::{IonDataHash, IonDataOrd, IonEq};
 use crate::symbol_ref::AsSymbolRef;
 use crate::text::text_formatter::FmtValueFormatter;
 use crate::Symbol;
+use rustc_hash::FxHashMap;
 use smallvec::SmallVec;
 use std::cmp::Ordering;
-use std::collections::{HashMap, VecDeque};
+use std::collections::VecDeque;
 use std::fmt::{Display, Formatter};
 use std::hash::Hasher;
 
@@ -20,7 +21,7 @@ struct Fields {
     // Key/value pairs in the order they were inserted
     by_index: Vec<(Symbol, Element)>,
     // Maps symbols to a list of indexes where values may be found in `by_index` above
-    by_name: HashMap<Symbol, IndexVec>,
+    by_name: FxHashMap<Symbol, IndexVec>,
 }
 
 impl Fields {
@@ -322,7 +323,7 @@ where
     /// Returns an owned struct from the given iterator of field names/values.
     fn from_iter<I: IntoIterator<Item = (K, V)>>(iter: I) -> Self {
         let mut by_index: Vec<(Symbol, Element)> = Vec::new();
-        let mut by_name: HashMap<Symbol, IndexVec> = HashMap::new();
+        let mut by_name: FxHashMap<Symbol, IndexVec> = FxHashMap::default();
         for (field_name, field_value) in iter {
             let field_name = field_name.into();
             let field_value = field_value.into();
