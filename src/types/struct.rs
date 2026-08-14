@@ -8,7 +8,7 @@ use rustc_hash::FxHashMap;
 use smallvec::SmallVec;
 use std::cmp::Ordering;
 use std::collections::VecDeque;
-use std::fmt::{Display, Formatter};
+use std::fmt::{Debug, Display, Formatter};
 use std::hash::Hasher;
 
 // A convenient type alias for a vector capable of storing a single `usize` inline
@@ -16,12 +16,25 @@ use std::hash::Hasher;
 type IndexVec = SmallVec<[usize; 1]>;
 
 // This collection is broken out into its own type to allow instances of it to be shared with Arc/Rc.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 struct Fields {
     // Key/value pairs in the order they were inserted
     by_index: Vec<(Symbol, Element)>,
-    // Maps symbols to a list of indexes where values may be found in `by_index` above
+    // Maps symbols to a list of indexes where values may be found in `by_index` above.
+    // `FxHashMap` is used for its faster hashing; field names are the same untrusted
+    // symbol text that the symbol table already indexes with an `FxHashMap`
+    // (see `ids_by_text` in `symbol_table.rs`).
     by_name: FxHashMap<Symbol, IndexVec>,
+}
+
+impl Debug for Fields {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        // `by_name` is omitted because a hash map's iteration order is arbitrary; it is
+        // derived entirely from `by_index`, which preserves insertion order.
+        f.debug_struct("Fields")
+            .field("by_index", &self.by_index)
+            .finish_non_exhaustive()
+    }
 }
 
 impl Fields {

@@ -17,8 +17,8 @@
 //!   * `element_read_one`: materializes the document with `Element::read_one` — the
 //!     stable, default-feature API.
 //!   * `element_struct_get_by_name`: materializes the document once (outside the timed
-//!     loop), then repeatedly looks up struct fields by name — a regression guard for
-//!     the DOM's field-name index.
+//!     loop), then repeatedly looks up struct fields by name — mostly present names,
+//!     plus ~15% absent names — a regression guard for the DOM's field-name index.
 //!   * `lazy_any_read_all` / `lazy_binary_read_all`: visits every value in the document
 //!     using the streaming `Reader` with `AnyEncoding` (encoding auto-detection) and
 //!     with the concrete `v1_0::Binary` encoding. Like the other benchmarks' streaming
@@ -198,13 +198,19 @@ fn default_feature_benchmarks(
         .elements()
         .map(|element| element.as_struct().unwrap())
         .collect();
-    // Precompute the lookup keys so the timed loop performs no allocations.
+    // Precompute the lookup keys so the timed loop performs no allocations. Roughly
+    // 15% of the keys are absent from every struct so that the index's miss path is
+    // exercised alongside its hit path.
+    let absent_keys = |struct_index: usize, count: usize| {
+        (0..count).map(move |index| format!("missingField{:02}", (struct_index + index) % 8))
+    };
     let lookup_keys: Vec<Vec<String>> = match flavor {
         "value_heavy" => (0..num_structs)
-            .map(|_| {
+            .map(|struct_index| {
                 VALUE_HEAVY_FIELD_NAMES
                     .iter()
                     .map(|name| (*name).to_owned())
+                    .chain(absent_keys(struct_index, 3))
                     .collect()
             })
             .collect(),
@@ -212,6 +218,7 @@ fn default_feature_benchmarks(
             .map(|struct_index| {
                 (0..SYMBOL_HEAVY_FIELDS_PER_STRUCT)
                     .map(|index| symbol_heavy_field_name(struct_index, index))
+                    .chain(absent_keys(struct_index, 2))
                     .collect()
             })
             .collect(),

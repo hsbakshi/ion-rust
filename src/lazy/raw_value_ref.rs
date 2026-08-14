@@ -56,7 +56,6 @@ impl<D: Decoder> PartialEq for RawValueRef<'_, D> {
 }
 
 impl<D: Decoder> Debug for RawValueRef<'_, D> {
-    #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             RawValueRef::Null(ion_type) => write!(f, "null.{ion_type}"),
@@ -103,7 +102,6 @@ impl<'top, D: Decoder> RawValueRef<'top, D> {
         Ok(value_ref)
     }
 
-    #[inline]
     pub fn expect_null(self) -> IonResult<IonType> {
         if let RawValueRef::Null(ion_type) = self {
             Ok(ion_type)
@@ -112,7 +110,6 @@ impl<'top, D: Decoder> RawValueRef<'top, D> {
         }
     }
 
-    #[inline]
     pub fn expect_bool(self) -> IonResult<bool> {
         if let RawValueRef::Bool(b) = self {
             Ok(b)
@@ -121,7 +118,6 @@ impl<'top, D: Decoder> RawValueRef<'top, D> {
         }
     }
 
-    #[inline]
     pub fn expect_int(self) -> IonResult<Int> {
         if let RawValueRef::Int(i) = self {
             Ok(i)
@@ -130,7 +126,6 @@ impl<'top, D: Decoder> RawValueRef<'top, D> {
         }
     }
 
-    #[inline]
     pub fn expect_i64(self) -> IonResult<i64> {
         if let RawValueRef::Int(i) = self {
             i.expect_i64()
@@ -139,7 +134,6 @@ impl<'top, D: Decoder> RawValueRef<'top, D> {
         }
     }
 
-    #[inline]
     pub fn expect_float(self) -> IonResult<f64> {
         if let RawValueRef::Float(f) = self {
             Ok(f)
@@ -148,7 +142,6 @@ impl<'top, D: Decoder> RawValueRef<'top, D> {
         }
     }
 
-    #[inline]
     pub fn expect_decimal(self) -> IonResult<Decimal> {
         if let RawValueRef::Decimal(d) = self {
             Ok(d)
@@ -157,7 +150,6 @@ impl<'top, D: Decoder> RawValueRef<'top, D> {
         }
     }
 
-    #[inline]
     pub fn expect_timestamp(self) -> IonResult<Timestamp> {
         if let RawValueRef::Timestamp(t) = self {
             Ok(t)
@@ -166,7 +158,6 @@ impl<'top, D: Decoder> RawValueRef<'top, D> {
         }
     }
 
-    #[inline]
     pub fn expect_string(self) -> IonResult<StrRef<'top>> {
         if let RawValueRef::String(s) = self {
             Ok(s)
@@ -175,7 +166,6 @@ impl<'top, D: Decoder> RawValueRef<'top, D> {
         }
     }
 
-    #[inline]
     pub fn expect_symbol(self) -> IonResult<RawSymbolRef<'top>> {
         if let RawValueRef::Symbol(s) = self {
             Ok(s)
@@ -184,7 +174,6 @@ impl<'top, D: Decoder> RawValueRef<'top, D> {
         }
     }
 
-    #[inline]
     pub fn expect_blob(self) -> IonResult<BytesRef<'top>> {
         if let RawValueRef::Blob(b) = self {
             Ok(b)
@@ -193,7 +182,6 @@ impl<'top, D: Decoder> RawValueRef<'top, D> {
         }
     }
 
-    #[inline]
     pub fn expect_clob(self) -> IonResult<BytesRef<'top>> {
         if let RawValueRef::Clob(c) = self {
             Ok(c)
@@ -202,7 +190,6 @@ impl<'top, D: Decoder> RawValueRef<'top, D> {
         }
     }
 
-    #[inline]
     pub fn expect_list(self) -> IonResult<D::List<'top>> {
         if let RawValueRef::List(s) = self {
             Ok(s)
@@ -211,7 +198,6 @@ impl<'top, D: Decoder> RawValueRef<'top, D> {
         }
     }
 
-    #[inline]
     pub fn expect_sexp(self) -> IonResult<D::SExp<'top>> {
         if let RawValueRef::SExp(s) = self {
             Ok(s)
@@ -220,7 +206,6 @@ impl<'top, D: Decoder> RawValueRef<'top, D> {
         }
     }
 
-    #[inline]
     pub fn expect_struct(self) -> IonResult<D::Struct<'top>> {
         if let RawValueRef::Struct(s) = self {
             Ok(s)
