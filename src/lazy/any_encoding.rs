@@ -1,5 +1,15 @@
 #![allow(non_camel_case_types)]
 
+// ## `#[inline]` convention in this module
+//
+// The enum-dispatch wrappers in this file sit on the hot path of every `AnyEncoding` read.
+// Because `#[inline]` is what allows a *non-LTO downstream build* to inline these
+// single-match dispatch methods across the crate boundary, small dispatch wrappers and
+// `From` conversion shims here carry `#[inline]`. Large multi-branch functions and generic
+// functions (which monomorphize into the caller's crate anyway) are deliberately left
+// un-annotated. The effect is measured in aggregate via `benches/large_doc_read.rs`, not
+// per-annotation. New small dispatch/`From` shims added to this file should follow suit.
+
 use crate::lazy::binary::raw::annotations_iterator::RawBinaryAnnotationsIterator as RawBinaryAnnotationsIterator_1_0;
 use crate::lazy::binary::raw::r#struct::{
     LazyRawBinaryFieldName_1_0, LazyRawBinaryStruct_1_0, RawBinaryStructIterator_1_0,
@@ -656,7 +666,6 @@ impl<'data> LazyRawReader<'data, AnyEncoding> for LazyRawAnyReader<'data> {
         }
     }
 
-    #[inline]
     fn resume(context: EncodingContextRef<'data>, mut saved_state: RawReaderState<'data>) -> Self {
         let offset = saved_state.offset();
         let data = saved_state.data();
@@ -673,7 +682,6 @@ impl<'data> LazyRawReader<'data, AnyEncoding> for LazyRawAnyReader<'data> {
         }
     }
 
-    #[inline]
     fn save_state(&self) -> RawReaderState<'data> {
         use RawReaderKind::*;
         let reader_state = match &self.encoding_reader {
@@ -695,7 +703,6 @@ impl<'data> LazyRawReader<'data, AnyEncoding> for LazyRawAnyReader<'data> {
         reader_state
     }
 
-    #[inline]
     fn next(&mut self) -> IonResult<LazyRawStreamItem<'data, AnyEncoding>> {
         // If we previously ran into an IVM that changed the stream encoding, replace our reader
         // with one that can read the new encoding.
@@ -790,8 +797,8 @@ impl<'top> LazyRawAnyValue<'top> {
 
 #[derive(Debug, Copy, Clone)]
 pub enum LazyRawValueKind<'top> {
-    // Binary 1.0 is declared first so that the most common encoding's variant is
-    // the zero discriminant, which the compiler can dispatch on most cheaply.
+    // Placing the most common encoding (binary Ion 1.0) first measured faster on the
+    // large-document benchmarks; no compiler layout guarantee is assumed.
     Binary_1_0(&'top LazyRawBinaryValue_1_0<'top>),
     Text_1_0(LazyRawTextValue_1_0<'top>),
     Text_1_1(LazyRawTextValue_1_1<'top>),
@@ -979,7 +986,6 @@ impl<'top> From<RawValueRef<'top, BinaryEncoding_1_1>> for RawValueRef<'top, Any
 impl<'top> From<LazyRawStreamItem<'top, TextEncoding_1_0>>
     for LazyRawStreamItem<'top, AnyEncoding>
 {
-    #[inline]
     fn from(value: LazyRawStreamItem<'top, TextEncoding_1_0>) -> Self {
         match value {
             LazyRawStreamItem::<TextEncoding_1_0>::VersionMarker(marker) => {
@@ -1001,7 +1007,6 @@ impl<'top> From<LazyRawStreamItem<'top, TextEncoding_1_0>>
 impl<'top> From<LazyRawStreamItem<'top, BinaryEncoding_1_0>>
     for LazyRawStreamItem<'top, AnyEncoding>
 {
-    #[inline]
     fn from(value: LazyRawStreamItem<'top, BinaryEncoding_1_0>) -> Self {
         match value {
             LazyRawStreamItem::<BinaryEncoding_1_0>::VersionMarker(marker) => {
@@ -1023,7 +1028,6 @@ impl<'top> From<LazyRawStreamItem<'top, BinaryEncoding_1_0>>
 impl<'top> From<LazyRawStreamItem<'top, TextEncoding_1_1>>
     for LazyRawStreamItem<'top, AnyEncoding>
 {
-    #[inline]
     fn from(value: LazyRawStreamItem<'top, TextEncoding_1_1>) -> Self {
         match value {
             LazyRawStreamItem::<TextEncoding_1_1>::VersionMarker(marker) => {
@@ -1047,7 +1051,6 @@ impl<'top> From<LazyRawStreamItem<'top, TextEncoding_1_1>>
 impl<'top> From<LazyRawStreamItem<'top, BinaryEncoding_1_1>>
     for LazyRawStreamItem<'top, AnyEncoding>
 {
-    #[inline]
     fn from(value: LazyRawStreamItem<'top, BinaryEncoding_1_1>) -> Self {
         match value {
             LazyRawStreamItem::<BinaryEncoding_1_1>::VersionMarker(marker) => {
@@ -1792,7 +1795,6 @@ impl<'data> From<LazyRawFieldExpr<'data, BinaryEncoding_1_1>>
 }
 
 impl<'data> LazyContainerPrivate<'data, AnyEncoding> for LazyRawAnyStruct<'data> {
-    #[inline]
     fn from_value(value: LazyRawAnyValue<'data>) -> Self {
         match value.encoding {
             LazyRawValueKind::Text_1_0(v) => LazyRawAnyStruct {

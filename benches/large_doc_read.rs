@@ -135,20 +135,17 @@ fn encode_binary_1_0(text: &str) -> IonResult<Vec<u8>> {
     Element::read_one(text)?.encode_as(v1_0::Binary)
 }
 
-/// Grows the number of structs produced by `generate` until the binary-encoded document
+/// Grows the number of structs produced by `flavor` until the binary-encoded document
 /// reaches `target_num_bytes`. Returns the encoded document and the struct count.
-fn make_document(
-    generate: fn(usize) -> String,
-    target_num_bytes: usize,
-) -> IonResult<(Vec<u8>, usize)> {
+fn make_document(flavor: Flavor, target_num_bytes: usize) -> IonResult<(Vec<u8>, usize)> {
     let mut num_structs = 8;
-    let mut binary_data = encode_binary_1_0(&generate(num_structs))?;
+    let mut binary_data = encode_binary_1_0(&flavor.generate(num_structs))?;
     // Take one proportional jump toward the target size, then fine-tune linearly.
     num_structs = (num_structs * target_num_bytes / binary_data.len().max(1)).max(1);
-    binary_data = encode_binary_1_0(&generate(num_structs))?;
+    binary_data = encode_binary_1_0(&flavor.generate(num_structs))?;
     while binary_data.len() < target_num_bytes {
         num_structs += 1;
-        binary_data = encode_binary_1_0(&generate(num_structs))?;
+        binary_data = encode_binary_1_0(&flavor.generate(num_structs))?;
     }
     Ok((binary_data, num_structs))
 }
@@ -172,23 +169,74 @@ fn visit_element(element: &Element) -> usize {
     }
 }
 
+/// A document flavor: which shape of test document to generate.
+#[derive(Clone, Copy, Debug)]
+enum Flavor {
+    /// Log-record-shaped structs reusing a small set of field names; the symbol table
+    /// stays small and nearly all of the document is value content.
+    ValueHeavy,
+    /// Structs in which every field name and symbol value is distinct; most of the read
+    /// cost is symbol table processing.
+    SymbolHeavy,
+}
+
+impl Flavor {
+    /// A short name for this flavor, used in benchmark IDs.
+    fn label(self) -> &'static str {
+        match self {
+            Flavor::ValueHeavy => "value_heavy",
+            Flavor::SymbolHeavy => "symbol_heavy",
+        }
+    }
+
+    /// Produces the text for a document of this flavor containing `num_structs` structs.
+    fn generate(self, num_structs: usize) -> String {
+        match self {
+            Flavor::ValueHeavy => value_heavy_text(num_structs),
+            Flavor::SymbolHeavy => symbol_heavy_text(num_structs),
+        }
+    }
+
+    /// The field names to look up in the `struct_index`th struct of a document of this
+    /// flavor: this struct's present field names followed by `num_absent` names that are
+    /// absent from every struct.
+    fn lookup_keys(self, struct_index: usize) -> Vec<String> {
+        let absent_keys = |count: usize| {
+            (0..count).map(move |index| format!("missingField{:02}", (struct_index + index) % 8))
+        };
+        match self {
+            Flavor::ValueHeavy => VALUE_HEAVY_FIELD_NAMES
+                .iter()
+                .map(|name| (*name).to_owned())
+                .chain(absent_keys(3))
+                .collect(),
+            Flavor::SymbolHeavy => (0..SYMBOL_HEAVY_FIELDS_PER_STRUCT)
+                .map(|index| symbol_heavy_field_name(struct_index, index))
+                .chain(absent_keys(2))
+                .collect(),
+        }
+    }
+}
+
 /// Benchmarks that only require the crate's default features.
 fn default_feature_benchmarks(
     c: &mut Criterion,
-    flavor: &str,
+    flavor: Flavor,
     size_label: &str,
     binary_data: &[u8],
     num_structs: usize,
 ) {
-    let mut group = c.benchmark_group(format!("large_doc {flavor} {size_label}"));
+    let case_id = format!("{}_{}", flavor.label(), size_label);
 
     // Materialize the whole document with the stable, default-feature API.
-    group.bench_function("element_read_one", |b| {
+    let mut group = c.benchmark_group("large_doc_read/element_read_one");
+    group.bench_function(&case_id, |b| {
         b.iter(|| {
             let element = Element::read_one(black_box(binary_data)).unwrap();
             black_box(element);
         })
     });
+    group.finish();
 
     // Materialize the document once, then repeatedly look up struct fields by name.
     let document = Element::read_one(binary_data).unwrap();
@@ -201,30 +249,11 @@ fn default_feature_benchmarks(
     // Precompute the lookup keys so the timed loop performs no allocations. Roughly
     // 15% of the keys are absent from every struct so that the index's miss path is
     // exercised alongside its hit path.
-    let absent_keys = |struct_index: usize, count: usize| {
-        (0..count).map(move |index| format!("missingField{:02}", (struct_index + index) % 8))
-    };
-    let lookup_keys: Vec<Vec<String>> = match flavor {
-        "value_heavy" => (0..num_structs)
-            .map(|struct_index| {
-                VALUE_HEAVY_FIELD_NAMES
-                    .iter()
-                    .map(|name| (*name).to_owned())
-                    .chain(absent_keys(struct_index, 3))
-                    .collect()
-            })
-            .collect(),
-        "symbol_heavy" => (0..num_structs)
-            .map(|struct_index| {
-                (0..SYMBOL_HEAVY_FIELDS_PER_STRUCT)
-                    .map(|index| symbol_heavy_field_name(struct_index, index))
-                    .chain(absent_keys(struct_index, 2))
-                    .collect()
-            })
-            .collect(),
-        other => unreachable!("unexpected flavor: {other}"),
-    };
-    group.bench_function("element_struct_get_by_name", |b| {
+    let lookup_keys: Vec<Vec<String>> = (0..num_structs)
+        .map(|struct_index| flavor.lookup_keys(struct_index))
+        .collect();
+    let mut group = c.benchmark_group("large_doc_read/element_struct_get_by_name");
+    group.bench_function(&case_id, |b| {
         b.iter(|| {
             let mut num_found = 0_usize;
             for (strukt, keys) in structs.iter().zip(lookup_keys.iter()) {
@@ -238,13 +267,12 @@ fn default_feature_benchmarks(
             black_box(num_found);
         })
     });
-
     group.finish();
 }
 
 /// Benchmarks that require the `experimental-reader-writer` feature.
 #[cfg(feature = "experimental-reader-writer")]
-fn lazy_reader_benchmarks(c: &mut Criterion, flavor: &str, size_label: &str, binary_data: &[u8]) {
+fn lazy_reader_benchmarks(c: &mut Criterion, flavor: Flavor, size_label: &str, binary_data: &[u8]) {
     use ion_rs::{AnyEncoding, Decoder, LazyStruct, LazyValue, Reader, ValueRef};
 
     /// Reads this value and, if it's a container, any nested values. Returns the number
@@ -283,9 +311,10 @@ fn lazy_reader_benchmarks(c: &mut Criterion, flavor: &str, size_label: &str, bin
         Ok(count)
     }
 
-    let mut group = c.benchmark_group(format!("large_doc {flavor} {size_label}"));
+    let case_id = format!("{}_{}", flavor.label(), size_label);
 
-    group.bench_function("lazy_any_read_all", |b| {
+    let mut group = c.benchmark_group("large_doc_read/lazy_any_read_all");
+    group.bench_function(&case_id, |b| {
         b.iter(|| {
             let mut reader = Reader::new(AnyEncoding, black_box(binary_data)).unwrap();
             let mut num_values = 0_usize;
@@ -295,8 +324,10 @@ fn lazy_reader_benchmarks(c: &mut Criterion, flavor: &str, size_label: &str, bin
             black_box(num_values);
         })
     });
+    group.finish();
 
-    group.bench_function("lazy_binary_read_all", |b| {
+    let mut group = c.benchmark_group("large_doc_read/lazy_binary_read_all");
+    group.bench_function(&case_id, |b| {
         b.iter(|| {
             let mut reader = Reader::new(v1_0::Binary, black_box(binary_data)).unwrap();
             let mut num_values = 0_usize;
@@ -306,26 +337,20 @@ fn lazy_reader_benchmarks(c: &mut Criterion, flavor: &str, size_label: &str, bin
             black_box(num_values);
         })
     });
-
     group.finish();
 }
 
-/// A document flavor: a label and a generator producing that flavor's text Ion.
-type Flavor = (&'static str, fn(usize) -> String);
-
 fn criterion_benchmark(c: &mut Criterion) {
     const SIZES: &[(usize, &str)] = &[(10 * 1024, "10KB"), (30 * 1024, "30KB")];
-    const FLAVORS: &[Flavor] = &[
-        ("value_heavy", value_heavy_text),
-        ("symbol_heavy", symbol_heavy_text),
-    ];
+    const FLAVORS: &[Flavor] = &[Flavor::ValueHeavy, Flavor::SymbolHeavy];
 
-    for &(flavor, generate) in FLAVORS {
+    for &flavor in FLAVORS {
         for &(target_num_bytes, size_label) in SIZES {
             let (binary_data, num_structs) =
-                make_document(generate, target_num_bytes).expect("failed to generate document");
+                make_document(flavor, target_num_bytes).expect("failed to generate document");
             println!(
-                "{flavor} {size_label}: {} bytes, {num_structs} structs",
+                "{} {size_label}: {} bytes, {num_structs} structs",
+                flavor.label(),
                 binary_data.len()
             );
 

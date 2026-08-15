@@ -488,9 +488,16 @@ impl<Encoding: Decoder, Input: IonInput> ExpandingReader<Encoding, Input> {
             symbol_table.reset_to_prefix_only();
         }
         // The number of incoming symbols is known, so reserve capacity for them up front
-        // rather than growing the table incrementally as they are added.
-        symbol_table
-            .reserve(pending_changes.imported_symbols.len() + pending_changes.symbols.len());
+        // rather than growing the table incrementally as they are added. The text-to-ID
+        // map only receives entries for symbols with known text.
+        let num_imported = pending_changes.imported_symbols.len();
+        let num_imported_with_text = pending_changes
+            .imported_symbols
+            .iter()
+            .filter(|symbol| symbol.text().is_some())
+            .count();
+        let num_local = pending_changes.symbols.len();
+        symbol_table.reserve(num_imported + num_local, num_imported_with_text + num_local);
         // `drain()` empties the pending `imported_symbols` and `symbols` lists
         for symbol in pending_changes.imported_symbols.drain(..) {
             symbol_table.add_symbol(symbol);
