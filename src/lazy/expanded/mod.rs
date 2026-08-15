@@ -463,17 +463,10 @@ impl<Encoding: Decoder, Input: IonInput> ExpandingReader<Encoding, Input> {
         macro_table: &mut MacroTable,
     ) {
         if let Some(new_version) = pending_changes.switch_to_version.take() {
-            if new_version == IonVersion::v1_0 && symbol_table.ion_version() == IonVersion::v1_0 {
-                // An IVM that re-declares the stream's current version still resets the local
-                // symbol table. In Ion 1.0, the permanent system prefix is identical to the
-                // table's initial state, so truncating to the prefix (which also restores any
-                // system text-to-SID mappings that user symbols had shadowed) produces the same
-                // table state as a full rebuild at a fraction of the cost. See the unit test
-                // `reset_paths_equivalent_for_v1_0` in `symbol_table.rs`.
-                symbol_table.reset_to_prefix_only();
-            } else {
-                symbol_table.reset_to_version(new_version);
-            }
+            // An IVM that re-declares the stream's current version still resets the local
+            // symbol table. `reset_to_version` internally takes a cheaper prefix-only path
+            // when the version is unchanged (Ion 1.0).
+            symbol_table.reset_to_version(new_version);
             macro_table.reset_to_system_macros(new_version);
             pending_changes.has_changes = false;
             pending_changes.is_lst_append = false;

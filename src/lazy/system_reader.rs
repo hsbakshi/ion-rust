@@ -742,6 +742,41 @@ mod tests {
         Ok(())
     }
 
+    /// A user symbol whose text duplicates a system symbol's (e.g. `"name"`) shadows the
+    /// system entry in the text -> SID map. When a later LST *replaces* (rather than appends
+    /// to) the table -- with no intervening IVM -- the reset must restore the shadowed
+    /// system mapping.
+    #[test]
+    fn lst_replacement_restores_shadowed_system_mappings() -> IonResult<()> {
+        let mut reader = SystemReader::new(
+            AnyEncoding,
+            r#"
+                $ion_symbol_table::{ symbols: ["name"] }
+                $10 // user-space copy of "name"
+                // This LST does not import `$ion_symbol_table`, so it replaces the previous
+                // table rather than appending to it. There is no IVM between the tables.
+                $ion_symbol_table::{ symbols: ["other"] }
+                $10 // "other"
+            "#,
+        );
+        // Step over the first LST; advancing to the value applies it.
+        let _symtab = reader.next_item()?.expect_symbol_table()?;
+        assert_eq!(reader.expect_next_value()?.read()?.expect_symbol()?, "name");
+        // The user-space copy of "name" ($10) shadows system SID 4 in the text -> SID map.
+        assert_eq!(reader.symbol_table().sid_for("name"), Some(10));
+
+        // Advance past the second (replacement) LST to the value that follows it.
+        let _symtab = reader.next_item()?.expect_symbol_table()?;
+        assert_eq!(
+            reader.expect_next_value()?.read()?.expect_symbol()?,
+            "other"
+        );
+        // The replacement reset restored the system mapping for "name".
+        assert_eq!(reader.symbol_table().sid_for("name"), Some(4));
+        assert_eq!(reader.symbol_table().sid_for("other"), Some(10));
+        Ok(())
+    }
+
     // === Shared Symbol Tables ===
 
     use crate::catalog::MapCatalog;

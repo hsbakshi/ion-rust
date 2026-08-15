@@ -1,26 +1,27 @@
+//! Benchmarks the cost of reading *small* binary Ion 1.0 documents, constructing a fresh
+//! reader for each document.
+//!
+//! The other benchmarks in this suite amortize per-document fixed costs (reader construction,
+//! IVM handling, and local symbol table processing) by streaming many values through a single
+//! reader. Workloads that read one document per record, message, or database item pay those
+//! fixed costs on every read. This benchmark measures them directly:
+//!
+//! * `element_read_one`: `Element::read_one` on a single document (stable API, no experimental
+//!   features required).
+//! * `lazy_reader_any` / `lazy_reader_binary`: the lazy `Reader` with `AnyEncoding` and
+//!   `v1_0::Binary` respectively, reading all values in a single document (requires the
+//!   `experimental-reader-writer` feature, like the other benchmarks in this suite).
+//! * `multi_ivm`: many small documents concatenated into one stream (each preceded by an IVM),
+//!   read through a *single* reader. This exercises the encoding-context reset and local symbol
+//!   table processing that run at every IVM boundary, with reader construction amortized across
+//!   the documents in the stream.
+//!
+//! Documents are structs with a mixed scalar field profile (strings, ints, bools, a timestamp)
+//! whose field names require a local symbol table. Three sizes (~200 B, ~2 KB, ~20 KB) show how
+//! the fixed costs amortize as documents grow.
+
 use criterion::{criterion_group, criterion_main, Criterion};
 
-/// Benchmarks the cost of reading *small* binary Ion 1.0 documents, constructing a fresh
-/// reader for each document.
-///
-/// The other benchmarks in this suite amortize per-document fixed costs (reader construction,
-/// IVM handling, and local symbol table processing) by streaming many values through a single
-/// reader. Workloads that read one document per record, message, or database item pay those
-/// fixed costs on every read. This benchmark measures them directly:
-///
-/// * `element_read_one`: `Element::read_one` on a single document (stable API, no experimental
-///   features required).
-/// * `lazy_reader_any` / `lazy_reader_binary`: the lazy `Reader` with `AnyEncoding` and
-///   `v1_0::Binary` respectively, reading all values in a single document (requires the
-///   `experimental-reader-writer` feature, like the other benchmarks in this suite).
-/// * `multi_ivm`: many small documents concatenated into one stream (each preceded by an IVM),
-///   read through a *single* reader. This exercises the encoding-context reset and local symbol
-///   table processing that run at every IVM boundary, with reader construction amortized across
-///   the documents in the stream.
-///
-/// Documents are structs with a mixed scalar field profile (strings, ints, bools, a timestamp)
-/// whose field names require a local symbol table. Three sizes (~200 B, ~2 KB, ~20 KB) show how
-/// the fixed costs amortize as documents grow.
 mod data {
     use ion_rs::v1_0::Binary;
     use ion_rs::Element;

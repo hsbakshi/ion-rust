@@ -167,7 +167,19 @@ impl SymbolTable {
         };
     }
 
+    /// Resets the symbol table to the 'default' state for `new_version`, as used at the
+    /// beginning of a stream of that version.
+    ///
+    /// When the version is unchanged and is Ion 1.0, this takes a cheaper path: the
+    /// permanent system prefix is identical to the table's initial state, so truncating to
+    /// the prefix (which also restores any system text-to-SID mappings that user symbols
+    /// had shadowed) produces the same table state as a full rebuild at a fraction of the
+    /// cost. See the unit test `reset_paths_equivalent_for_v1_0` below.
     pub(crate) fn reset_to_version(&mut self, new_version: IonVersion) {
+        if new_version == IonVersion::v1_0 && self.ion_version == IonVersion::v1_0 {
+            self.reset_to_prefix_only();
+            return;
+        }
         self.ion_version = new_version;
         self.reset_to_default();
     }
